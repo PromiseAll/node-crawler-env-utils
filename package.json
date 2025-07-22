@@ -2,8 +2,18 @@
   "name": "node-crawler-env-utils",
   "version": "1.0.0",
   "description": "增强版爬虫环境代理监控工具，支持完整的Proxy操作拦截和美化日志输出",
-  "main": "index.js",
-  "types": "src/hook/proxy-new.d.ts",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./process": {
+      "import": "./dist/process.mjs",
+      "require": "./dist/process.js"
+    }
+  },
   "scripts": {
     "build": "tsup"
   },
@@ -13,7 +23,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/PromiseAll/node-crawler-env-utils/issues"
   },

@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsup';
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/process.ts'],
   bundle: true,
   format: ['esm', 'cjs'],
   dts: true,

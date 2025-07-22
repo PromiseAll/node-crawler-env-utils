@@ -1,4 +1,4 @@
-export const createEnvProccess = (processName: string, run: Function) => {
+export const listenMEnvMessage = (processName: string, run: Function) => {
   run();
   const envName = `windows-env-${processName}`;
   process.on(envName, async (data: any) => {
