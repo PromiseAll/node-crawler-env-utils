@@ -11,6 +11,21 @@ export const defineWindowEnv = (): string[] => {
   definedValue(globalThis, 'self', globalThis);
   definedValue(globalThis, 'parent', globalThis);
   definedValue(globalThis, 'global', globalThis);
+  definedValue(globalThis, 'TouchEvent', function TouchEvent() {
+    return new Event('touchstart');
+  });
+  definedValue(globalThis, 'MouseEvent', function MouseEvent() {
+    return new Event('mousedown');
+  });
+  definedValue(globalThis, 'KeyboardEvent', function KeyboardEvent() {
+    return new Event('keydown');
+  });
+  definedValue(globalThis, 'Screen', function Screen() {
+    return {
+      width: 1920,
+      height: 1080,
+    };
+  });
   setWindowsEnv('navigator');
   setWindowsEnv('location');
   setWindowsEnv('history');
@@ -22,10 +37,7 @@ export const defineWindowEnv = (): string[] => {
   globalThis.requestAnimationFrame = (callback: any) => {
     return setTimeout(callback, 0);
   };
-  globalThis.requestIdleCallback = (callback: any) => {
-
-
-  };
+  globalThis.requestIdleCallback = (callback: any) => {};
   return [
     'globalThis',
     'global',
@@ -40,18 +52,30 @@ export const defineWindowEnv = (): string[] => {
     'sessionStorage',
     'XMLHttpRequest',
   ];
-}
+};
 
 // 抽离方法定义
 export const setWindowsEnv = (envName: string, tagName?: string, value: any = {}) => {
   toObjectTag(value, tagName ?? envName.replace(/^./, match => match.toUpperCase()));
   definedValue(globalThis, envName, value);
-  Object.setPrototypeOf(value, { ...value })
+  Object.setPrototypeOf(value, { ...value });
   return value;
 };
 
 export const setXhrEnv = () => {
-  toFnNative(xhr2);
+  // toFnNative(xhr2);
   // setWindowsEnv('XMLHttpRequest', 'XMLHttpRequest', xhr2);
-  globalThis.XMLHttpRequest = xhr2;
+
+  function XMLHttpRequest() {
+    this.open = function open() {};
+    this.send = function send() {};
+    this.setRequestHeader = function setRequestHeader() {};
+    this.getResponseHeader = function getResponseHeader() {};
+    this.getAllResponseHeaders = function getAllResponseHeaders() {};
+    this.abort = function abort() {};
+    this.onreadystatechange = function onreadystatechange() {};
+  }
+  XMLHttpRequest.prototype = XMLHttpRequest;
+
+  globalThis.XMLHttpRequest = XMLHttpRequest;
 };

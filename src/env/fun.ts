@@ -68,3 +68,21 @@ export const definedProtoValue = (target: object, name: any, value: any, config:
   Object.setPrototypeOf(target, proto);
   return target;
 };
+
+
+
+// 定义原生构造函数 TouchEvent MouseEvent 等
+const definedNativeConstructor = (target: object, name: any, value: any, config: {
+  writable?: boolean;
+  enumerable?: boolean;
+  configurable?: boolean;
+} = {}) => {
+  Object.defineProperty(target, name, {
+    value,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    ...config,
+  });
+  return target;
+};
