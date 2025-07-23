@@ -32,12 +32,17 @@ export const toObjectTag = (target: object, name: string) => {
  * @param {any} value
  * @return {*}
  */
-export const definedValue = (target: object, name: any, value: any) => {
+export const definedValue = (target: object, name: any, value: any, config: {
+  writable?: boolean;
+  enumerable?: boolean;
+  configurable?: boolean;
+} = {}) => {
   Object.defineProperty(target, name, {
     value,
     writable: true,
     enumerable: false,
     configurable: true,
+    ...config,
   });
   return target;
 };

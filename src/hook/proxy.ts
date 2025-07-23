@@ -3,6 +3,8 @@
  * 基于Proxy实现完整的对象操作拦截和日志记录, 提供精细的日志级别、操作过滤和格式化控制。
  */
 
+const PROXY_MARKER = Symbol('__isEnvProxy');
+
 // 日志级别定义
 export enum ProxyLogLevel {
   /** 仅记录值为 "空值" 的 'get' 操作 (null, undefined, 0, '', NaN) */
@@ -314,14 +316,20 @@ class ProxyHandlerFactory {
     const self = this;
     return {
       get(target, prop, receiver) {
+        if (prop === PROXY_MARKER) return true;
         if (self.config.ignoredProperties.has(prop)) return Reflect.get(target, prop, receiver);
 
         const value = Reflect.get(target, prop, receiver);
-        const newPath = path ? `${path}.${String(prop)}` : String(prop);
-        self.logger.log(createLogEntry('get', { path: newPath, property: prop, value }));
+        self.logger.log(createLogEntry('get', { property: prop, value }));
 
-        // 如果启用了深度代理, 并且值是对象, 则递归创建代理
         if (self.config.isDeepProxy && typeof value === 'object' && value !== null) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, prop);
+          // 为避免 "TypeError: 'get' on proxy: property 'prototype' is a read-only..." 错误,
+          // 对于不可配置且不可写的属性(如 class 的 prototype), 我们必须返回原始值, 而不是新代理。
+          if (descriptor && !descriptor.configurable && !descriptor.writable) {
+            return value;
+          }
+          const newPath = path ? `${path}.${String(prop)}` : String(prop);
           return self.createProxy(value, newPath);
         }
         return value;
@@ -401,7 +409,9 @@ class ProxyHandlerFactory {
    * @returns 代理对象或原始值 (如果不是可代理的对象)
    */
   createProxy(target: any, path: string): any {
-    if (!['object','function'].includes(typeof target) || target === null) return target;
+    if (!['object', 'function'].includes(typeof target) || target === null) return target;
+    // 如果目标已是代理, 直接返回, 防止代理嵌套
+    if (target[PROXY_MARKER]) return target;
     if (this.proxyCache.has(target)) return this.proxyCache.get(target);
 
     const handler = this.createHandler(target, path);

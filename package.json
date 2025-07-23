@@ -1,17 +1,18 @@
 {
   "name": "node-crawler-env-utils",
   "version": "1.0.0",
+  "type": "module",
   "description": "增强版爬虫环境代理监控工具，支持完整的Proxy操作拦截和美化日志输出",
-  "main": "dist/index.mjs",
+  "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     },
     "./process": {
-      "import": "./dist/process.mjs",
-      "require": "./dist/process.js"
+      "import": "./dist/process.js",
+      "require": "./dist/process.cjs"
     }
   },
   "scripts": {
