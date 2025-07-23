@@ -46,11 +46,12 @@ export const defineWindowEnv = (): string[] => {
 export const setWindowsEnv = (envName: string, tagName?: string, value: any = {}) => {
   toObjectTag(value, tagName ?? envName.replace(/^./, match => match.toUpperCase()));
   definedValue(globalThis, envName, value);
-  definedValue(value, '__proto__', value);
+  Object.setPrototypeOf(value, { ...value })
   return value;
 };
 
 export const setXhrEnv = () => {
   toFnNative(xhr2);
-  setWindowsEnv('XMLHttpRequest', 'XMLHttpRequest', xhr2);
+  // setWindowsEnv('XMLHttpRequest', 'XMLHttpRequest', xhr2);
+  globalThis.XMLHttpRequest = xhr2;
 };

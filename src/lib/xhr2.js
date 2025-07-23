@@ -1235,4 +1235,4 @@ XMLHttpRequestUpload = class XMLHttpRequestUpload extends XMLHttpRequestEventTar
 // Export the XMLHttpRequestUpload constructor.
 XMLHttpRequest.XMLHttpRequestUpload = XMLHttpRequestUpload;
 
-export default XMLHttpRequest;
+export default XMLHttpRequest.XMLHttpRequest;

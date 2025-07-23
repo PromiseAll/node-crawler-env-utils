@@ -9,7 +9,7 @@ export const toFnNative = (fun: Function) => {
   };
   const funName = ['toString', 'toLocaleString'];
   funName.forEach(name => {
-    definedValue(fun, name, toNativeString);
+    definedProtoValue(fun, name, toNativeString);
   });
   return fun;
 };
@@ -21,7 +21,11 @@ export const toFnNative = (fun: Function) => {
  * @return {*}
  */
 export const toObjectTag = (target: object, name: string) => {
-  definedValue(target, Symbol.toStringTag, name);
+  if (target === globalThis) {
+    definedValue(target, Symbol.toStringTag, name);
+  } else {
+    definedProtoValue(target, Symbol.toStringTag, name);
+  }
   return target;
 };
 
@@ -44,5 +48,23 @@ export const definedValue = (target: object, name: any, value: any, config: {
     configurable: true,
     ...config,
   });
+  return target;
+};
+
+// 定义对象原型的属性 使用 Object.setPrototypeOf
+export const definedProtoValue = (target: object, name: any, value: any, config: {
+  writable?: boolean;
+  enumerable?: boolean;
+  configurable?: boolean;
+} = {}) => {
+  const proto = Object.getPrototypeOf(target);
+  Object.defineProperty(proto, name, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    ...config,
+  });
+  Object.setPrototypeOf(target, proto);
   return target;
 };
