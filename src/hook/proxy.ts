@@ -43,6 +43,8 @@ export interface LogConfig {
   showStackTrace: boolean;
   /** 用户自定义的格式化函数, 用于完全控制日志输出字符串 */
   customFormatter?: (log: LogEntry) => string;
+  /** 限制日志中值的最大字符串长度, 超出部分将显示省略号 */
+  maxValueLength?: number;
 }
 
 // 日志条目接口, 描述了单条日志的全部信息
@@ -82,6 +84,8 @@ const DEFAULT_LOG_CONFIG: LogConfig = {
   level: ProxyLogLevel.MEDIUM,
   enableColors: true,
   showStackTrace: false,
+  // 默认不限制长度
+  maxValueLength: undefined,
 };
 
 // ANSI 颜色代码, 用于美化控制台输出
@@ -120,29 +124,54 @@ function getDetailedType(value: any): string {
 /**
  * 将任意值格式化为易于阅读的字符串。
  * @param value 任意值
+ * @param maxLength 最大字符串长度限制
  * @returns 格式化后的字符串
  */
-function formatValue(value: any): string {
+function formatValue(value: any, maxLength?: number): string {
   if (value === null) return 'null';
   if (typeof value === 'undefined') return 'undefined';
-  if (typeof value === 'string') return `"${value}"`;
+
+  // 处理字符串的长度限制
+  if (typeof value === 'string') {
+    const formattedStr = `"${value}"`;
+    if (maxLength !== undefined && formattedStr.length > maxLength) {
+      return `"${value.slice(0, maxLength - 3)}..."`;
+    }
+    return formattedStr;
+  }
+
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (typeof value === 'function') return `[Function: ${value.name || 'anonymous'}]`;
+
   try {
     if (Array.isArray(value)) {
-      const items = value.slice(0, 10).map(v => formatValue(v));
+      const items = value.slice(0, 10).map(v => formatValue(v, maxLength));
       return `[${items.join(', ')}${value.length > 10 ? '...' : ''}]`;
     }
+
     if (typeof value === 'object') {
       const keys = Object.keys(value);
       if (keys.length === 0) return '{}';
-      const pairs = keys.slice(0, 5).map(k => `${k}: ${formatValue(value[k])}`);
-      return `{ ${pairs.join(', ')}${keys.length > 5 ? '...' : ''} }`;
+
+      const pairs = keys.slice(0, 5).map(k => {
+        const formattedValue = formatValue(value[k], maxLength);
+        return `${k}: ${formattedValue}`;
+      });
+
+      const result = `{ ${pairs.join(', ')}${keys.length > 5 ? '...' : ''} }`;
+
+      // 如果设置了最大长度，且结果超出长度，则截断
+      if (maxLength !== undefined && result.length > maxLength) {
+        return result.slice(0, maxLength - 3) + '...';
+      }
+
+      return result;
     }
   } catch {
     // 处理可能因为代理或其他原因导致的访问异常
     return `[${getDetailedType(value)}]`;
   }
+
   return String(value);
 }
 
@@ -163,7 +192,7 @@ function getStackTrace(): string | undefined {
  * 日志格式化器: 负责将 LogEntry 对象转换为最终的彩色字符串。
  */
 class LogFormatter {
-  constructor(private config: LogConfig) {}
+  constructor(private config: LogConfig) { }
 
   /**
    * 格式化单条日志。
@@ -188,14 +217,14 @@ class LogFormatter {
 
     // 根据操作类型附加额外信息
     if (entry.operation === 'set') {
-      output += `: ${color(COLORS.red)}${formatValue(entry.oldValue)}${reset} → ${color(
+      output += `: ${color(COLORS.red)}${formatValue(entry.oldValue, this.config.maxValueLength)}${reset} → ${color(
         COLORS.green
-      )}${formatValue(entry.value)}${reset}`;
+      )}${formatValue(entry.value, this.config.maxValueLength)}${reset}`;
     } else if (entry.operation === 'has') {
-      output += ` = ${color(COLORS.magenta)}${entry.value}${reset}`;
+      output += ` = ${color(COLORS.magenta)}${formatValue(entry.value, this.config.maxValueLength)}${reset}`;
     } else if (entry.operation === 'get' || entry.value !== undefined) {
       // 关键改动: 对 'get' 操作, 总是显示其值, 即使是 undefined
-      output += ` = ${color(COLORS.green)}${formatValue(entry.value)}${reset}`;
+      output += ` = ${color(COLORS.green)}${formatValue(entry.value, this.config.maxValueLength)}${reset}`;
     }
 
     // 如果需要, 附加堆栈信息
@@ -211,15 +240,15 @@ class LogFormatter {
    * @returns ANSI 颜色代码
    */
   private getOperationColor = (op: ProxyOperation): string =>
-    ({
-      get: COLORS.green,
-      set: COLORS.yellow,
-      has: COLORS.blue,
-      deleteProperty: COLORS.red,
-      ownKeys: COLORS.magenta,
-      apply: COLORS.cyan,
-      construct: COLORS.brightCyan,
-    }[op] || COLORS.gray);
+  ({
+    get: COLORS.green,
+    set: COLORS.yellow,
+    has: COLORS.blue,
+    deleteProperty: COLORS.red,
+    ownKeys: COLORS.magenta,
+    apply: COLORS.cyan,
+    construct: COLORS.brightCyan,
+  }[op] || COLORS.gray);
 }
 
 /**
@@ -297,7 +326,7 @@ class ProxyHandlerFactory {
   // 使用 WeakMap 缓存已创建的代理, 避免重复代理同一个对象并防止内存泄漏
   private proxyCache = new WeakMap<object, any>();
 
-  constructor(private logger: Logger, private config: ProxyConfig) {}
+  constructor(private logger: Logger, private config: ProxyConfig) { }
 
   /**
    * 为指定目标对象和路径创建一个 Proxy Handler。
@@ -354,41 +383,48 @@ class ProxyHandlerFactory {
         self.logger.log(createLogEntry('deleteProperty', { property: p })),
         Reflect.deleteProperty(t, p)
       ),
-      ownKeys: t => (
-        self.logger.log(createLogEntry('ownKeys', { value: Reflect.ownKeys(t) })),
-        Reflect.ownKeys(t)
-      ),
-      getOwnPropertyDescriptor: (t, p) => (
+      ownKeys: t => {
+        const keys = Reflect.ownKeys(t);
+        self.logger.log(createLogEntry('ownKeys', { value: keys }));
+        return keys;
+      },
+      getOwnPropertyDescriptor: (t, p) => {
+        const descriptor = Reflect.getOwnPropertyDescriptor(t, p);
         self.logger.log(
           createLogEntry('getOwnPropertyDescriptor', {
             property: p,
-            value: Reflect.getOwnPropertyDescriptor(t, p),
+            value: descriptor,
           })
-        ),
-        Reflect.getOwnPropertyDescriptor(t, p)
-      ),
-      defineProperty: (t, p, d) => (
-        self.logger.log(createLogEntry('defineProperty', { property: p, value: d })),
-        Reflect.defineProperty(t, p, d)
-      ),
-      preventExtensions: t => (
+        );
+        return descriptor;
+      },
+      defineProperty: (t, p, d) => {
+        const result = Reflect.defineProperty(t, p, d);
+        self.logger.log(createLogEntry('defineProperty', { property: p, value: d }));
+        return result;
+      },
+      preventExtensions: t => {
+        const result = Reflect.preventExtensions(t);
         self.logger.log(
-          createLogEntry('preventExtensions', { value: Reflect.preventExtensions(t) })
-        ),
-        Reflect.preventExtensions(t)
-      ),
-      getPrototypeOf: t => (
-        self.logger.log(createLogEntry('getPrototypeOf', { value: Reflect.getPrototypeOf(t) })),
-        Reflect.getPrototypeOf(t)
-      ),
-      setPrototypeOf: (t, p) => (
-        self.logger.log(createLogEntry('setPrototypeOf', { value: p })),
-        Reflect.setPrototypeOf(t, p)
-      ),
-      isExtensible: t => (
-        self.logger.log(createLogEntry('isExtensible', { value: Reflect.isExtensible(t) })),
-        Reflect.isExtensible(t)
-      ),
+          createLogEntry('preventExtensions', { value: result })
+        );
+        return result;
+      },
+      getPrototypeOf: t => {
+        const prototype = Reflect.getPrototypeOf(t);
+        self.logger.log(createLogEntry('getPrototypeOf', { value: prototype }));
+        return prototype;
+      },
+      setPrototypeOf: (t, p) => {
+        const result = Reflect.setPrototypeOf(t, p);
+        self.logger.log(createLogEntry('setPrototypeOf', { value: p }));
+        return result;
+      },
+      isExtensible: t => {
+        const result = Reflect.isExtensible(t);
+        self.logger.log(createLogEntry('isExtensible', { value: result }));
+        return result;
+      },
       apply: (t, thisArg, args) => {
         const result = Reflect.apply(t, thisArg, args);
         self.logger.log(createLogEntry('apply', { value: { args, result } }));
@@ -490,6 +526,9 @@ export interface SetEnvProxyOptions {
   /** 需要代理的全局路径列表。 @example ['process.env', 'myApp.config'] */
   paths: string[];
 
+  /** 全局代理总开关，控制是否启用代理 */
+  isProxyEnabled?: boolean;
+
   /** 日志级别及格式化选项。 */
   logConfig?: Partial<Omit<LogConfig, 'showStackTrace'>> & { level?: ProxyLogLevel };
 
@@ -512,6 +551,24 @@ export interface SetEnvProxyOptions {
   allowedOperations?: ProxyOperation[] | 'all';
 }
 
+/** 
+ * 全局环境代理默认配置
+ * 可以在使用 setEnvProxy 或 createProxy 前全局修改默认配置
+ */
+export const globalEnvProxyConfig: Partial<Omit<SetEnvProxyOptions, 'paths'>> = {
+  /** 全局代理总开关，控制是否启用代理 */
+  isProxyEnabled: true,
+
+  logConfig: {
+    level: ProxyLogLevel.MEDIUM,
+    enableColors: true,
+    maxValueLength: undefined,
+  },
+  isDeepProxy: true,
+  allowedOperations: 'all',
+  ignoredProperties: [],
+};
+
 /**
  * 设置环境代理监控
  * @param options 配置选项
@@ -519,14 +576,22 @@ export interface SetEnvProxyOptions {
  * // 监控 process.env 的 get/set, 以及 config 的所有高等级操作
  * setEnvProxy({
  *   paths: ['process.env', 'config'],
- *   logConfig: { level: ProxyLogLevel.MEDIUM },
+ *   logConfig: { 
+ *     level: ProxyLogLevel.MEDIUM,
+ *     // 限制日志中值的最大长度为 100 个字符
+ *     maxValueLength: 100 
+ *   },
  *   isDeepProxy: true
  * });
  *
  * // 仅监控 myAPI 的函数调用和构造器调用
  * setEnvProxy({
  *   paths: ['myAPI'],
- *   logConfig: { level: ProxyLogLevel.HIGH },
+ *   logConfig: { 
+ *     level: ProxyLogLevel.HIGH,
+ *     // 限制日志中值的最大长度为 50 个字符
+ *     maxValueLength: 50 
+ *   },
  *   allowedOperations: ['apply', 'construct'],
  *   isDeepProxy: false
  * });
@@ -536,34 +601,124 @@ export function setEnvProxy(options: SetEnvProxyOptions): void {
     throw new Error('setEnvProxy: options.paths 必须是一个非空数组');
   }
 
-  const { logConfig: optLogConfig, ...restOptions } = options;
+  // 检查全局代理开关
+  const isProxyEnabled = options.isProxyEnabled ?? globalEnvProxyConfig.isProxyEnabled ?? true;
+
+  // 如果代理被禁用，直接返回
+  if (!isProxyEnabled) {
+    return;
+  }
+
+  // 合并全局配置和用户传入的配置
+  const mergedOptions: SetEnvProxyOptions = {
+    ...globalEnvProxyConfig,
+    ...options,
+    logConfig: {
+      ...globalEnvProxyConfig.logConfig,
+      ...options.logConfig,
+    },
+  };
 
   // 合并用户配置和默认配置
   const fullLogConfig: LogConfig = {
     ...DEFAULT_LOG_CONFIG,
-    ...optLogConfig,
-    showStackTrace: optLogConfig?.level === ProxyLogLevel.TRACE,
+    ...mergedOptions.logConfig,
+    showStackTrace: mergedOptions.logConfig?.level === ProxyLogLevel.TRACE,
   };
 
   // 构建完整的代理配置
   const config: ProxyConfig = {
-    paths: restOptions.paths,
+    paths: mergedOptions.paths,
     logConfig: fullLogConfig,
-    ignoredProperties: new Set(restOptions.ignoredProperties || []),
-    isDeepProxy: restOptions.isDeepProxy ?? true, // 默认为 true
+    ignoredProperties: new Set(mergedOptions.ignoredProperties || []),
+    isDeepProxy: mergedOptions.isDeepProxy ?? true, // 默认为 true
     allowedOperations:
-      restOptions.allowedOperations === 'all' || !restOptions.allowedOperations
+      mergedOptions.allowedOperations === 'all' || !mergedOptions.allowedOperations
         ? 'all'
-        : new Set(restOptions.allowedOperations),
+        : new Set(mergedOptions.allowedOperations),
   };
 
   new EnvironmentProxySetter(config).setProxies();
 }
 
-/** @deprecated 请直接使用 setEnvProxy。此函数为向后兼容而保留。 */
-export function createEnvProxy(
-  paths: string[],
-  options: Partial<Omit<SetEnvProxyOptions, 'paths'>> = {}
-): void {
-  setEnvProxy({ paths, ...options });
+
+/**
+ * 为单个对象创建代理
+ * @param target 要代理的目标对象
+ * @param options 代理配置选项
+ * @param customName 自定义代理对象的名称，用于日志输出
+ * @returns 代理后的对象
+ * @example
+ * const proxyObj = createProxy(myObject, {
+ *   logConfig: { level: ProxyLogLevel.HIGH },
+ *   isDeepProxy: true
+ * }, 'MyCustomObject');
+ */
+export function createProxy<T extends object>(
+  target: T,
+  options: Partial<Omit<SetEnvProxyOptions, 'paths'>> = {},
+  customName?: string
+): T {
+  // 检查全局代理开关
+  const isProxyEnabled = options.isProxyEnabled ?? globalEnvProxyConfig.isProxyEnabled ?? true;
+
+  // 如果代理被禁用，直接返回原始对象
+  if (!isProxyEnabled) {
+    return target;
+  }
+
+  // 获取对象的描述性名称
+  const getTargetName = () => {
+    // 如果提供了自定义名称，优先使用
+    if (customName) {
+      return customName;
+    }
+
+    // 优先使用 Symbol.toStringTag
+    if (Symbol.toStringTag in target) {
+      return (target as any)[Symbol.toStringTag];
+    }
+
+    // 尝试获取构造函数名
+    const constructorName = target.constructor?.name;
+    if (constructorName && constructorName !== 'Object') {
+      return constructorName;
+    }
+
+    // 最后回退到默认描述
+    return 'Object';
+  };
+
+  // 合并全局配置和用户传入的配置
+  const mergedOptions: Partial<Omit<SetEnvProxyOptions, 'paths'>> = {
+    ...globalEnvProxyConfig,
+    ...options,
+    logConfig: {
+      ...globalEnvProxyConfig.logConfig,
+      ...options.logConfig,
+    },
+  };
+
+  // 创建代理配置
+  const config: ProxyConfig = {
+    paths: [getTargetName()], // 使用对象的描述性名称
+    logConfig: {
+      ...DEFAULT_LOG_CONFIG,
+      ...mergedOptions.logConfig,
+      showStackTrace: mergedOptions.logConfig?.level === ProxyLogLevel.TRACE,
+    },
+    ignoredProperties: new Set(mergedOptions.ignoredProperties || []),
+    isDeepProxy: mergedOptions.isDeepProxy ?? true,
+    allowedOperations:
+      mergedOptions.allowedOperations === 'all' || !mergedOptions.allowedOperations
+        ? 'all'
+        : new Set(mergedOptions.allowedOperations),
+  };
+
+  // 创建日志记录器和处理器工厂
+  const logger = new Logger(config);
+  const handlerFactory = new ProxyHandlerFactory(logger, config);
+
+  // 创建并返回代理对象
+  return handlerFactory.createProxy(target, config.paths[0]);
 }

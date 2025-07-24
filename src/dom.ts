@@ -1,0 +1,2 @@
+// linkedom
+export * from 'linkedom';

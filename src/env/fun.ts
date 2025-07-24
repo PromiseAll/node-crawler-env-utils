@@ -1,88 +1,101 @@
 /**
- * @description:  定义函数为原生函数
- * @param {Function} fun
- * @return {*}
+ * @description: 将函数转换为模拟原生函数
+ * @param {Function} fn 需要转换的函数
+ * @param {string} [customName] 自定义函数名
+ * @return {Function} 转换后的函数
  */
-export const toFnNative = (fun: Function) => {
-  const toNativeString = function () {
-    return `function ${this.name}() { [native code] }`;
+export const toFnNative = <T extends Function>(
+  fn: T,
+  customName?: string
+): T => {
+  const nativeName = customName || fn.name || 'anonymousFunction';
+
+  const toNativeString = function (this: Function) {
+    return `function ${nativeName}() { [native code] }`;
   };
-  const funName = ['toString', 'toLocaleString'];
-  funName.forEach(name => {
-    definedProtoValue(fun, name, toNativeString);
+
+  const nativeFunctionMethods = ['toString', 'toLocaleString'];
+  nativeFunctionMethods.forEach(methodName => {
+    Object.defineProperty(fn, methodName, {
+      value: toNativeString,
+      configurable: false,
+      writable: false
+    });
   });
-  return fun;
+
+  return fn;
 };
 
 /**
- * @description: 定义对象的toStringTag
- * @param {object} target
- * @param {string} name
- * @return {*}
+ * @description: 设置对象的 toStringTag
+ * @param {object} target 目标对象
+ * @param {string} name 标签名
+ * @return {object} 处理后的对象
  */
-export const toObjectTag = (target: object, name: string) => {
-  if (target === globalThis) {
+export const definedObjectTag = <T extends object>(target: T, name: string): T => {
+  const isGlobalObject = target === globalThis;
+
+  if (isGlobalObject) {
     definedValue(target, Symbol.toStringTag, name);
   } else {
     definedProtoValue(target, Symbol.toStringTag, name);
   }
+
   return target;
 };
 
 /**
- * @description: 定义对象的属性值
- * @param {object} target
- * @param {string} name
- * @param {any} value
- * @return {*}
+ * @description: 定义对象属性，支持更精细的配置
+ * @param {object} target 目标对象
+ * @param {PropertyKey} name 属性名
+ * @param {any} value 属性值
+ * @param {PropertyDescriptor} [config] 属性描述符
+ * @return {object} 处理后的对象
  */
-export const definedValue = (target: object, name: any, value: any, config: {
-  writable?: boolean;
-  enumerable?: boolean;
-  configurable?: boolean;
-} = {}) => {
-  Object.defineProperty(target, name, {
+export const definedValue = <T extends object>(
+  target: T,
+  name: PropertyKey,
+  value: any,
+  config: PropertyDescriptor = {}
+): T => {
+  const defaultConfig: PropertyDescriptor = {
     value,
     writable: true,
-    enumerable: false,
-    configurable: true,
-    ...config,
-  });
+    enumerable: true,
+    configurable: false,
+    ...config
+  };
+
+  Object.defineProperty(target, name, defaultConfig);
   return target;
 };
 
-// 定义对象原型的属性 使用 Object.setPrototypeOf
-export const definedProtoValue = (target: object, name: any, value: any, config: {
-  writable?: boolean;
-  enumerable?: boolean;
-  configurable?: boolean;
-} = {}) => {
+/**
+ * @description: 在对象原型上定义属性
+ * @param {object} target 目标对象
+ * @param {PropertyKey} name 属性名
+ * @param {any} value 属性值
+ * @param {PropertyDescriptor} [config] 属性描述符
+ * @return {object} 处理后的对象
+ */
+export const definedProtoValue = <T extends object>(
+  target: T,
+  name: PropertyKey,
+  value: any,
+  config: PropertyDescriptor = {}
+): T => {
   const proto = Object.getPrototypeOf(target);
-  Object.defineProperty(proto, name, {
+
+  const defaultConfig: PropertyDescriptor = {
     value,
     writable: true,
     enumerable: true,
     configurable: true,
-    ...config,
-  });
+    ...config
+  };
+
+  Object.defineProperty(proto, name, defaultConfig);
   Object.setPrototypeOf(target, proto);
-  return target;
-};
 
-
-
-// 定义原生构造函数 TouchEvent MouseEvent 等
-const definedNativeConstructor = (target: object, name: any, value: any, config: {
-  writable?: boolean;
-  enumerable?: boolean;
-  configurable?: boolean;
-} = {}) => {
-  Object.defineProperty(target, name, {
-    value,
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    ...config,
-  });
   return target;
 };

@@ -10,6 +10,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./dom": {
+      "import": "./dist/dom.js",
+      "require": "./dist/dom.cjs"
+    },
     "./process": {
       "import": "./dist/process.js",
       "require": "./dist/process.cjs"
@@ -29,10 +33,10 @@
     "url": "https://github.com/PromiseAll/node-crawler-env-utils/issues"
   },
   "homepage": "https://github.com/PromiseAll/node-crawler-env-utils#readme",
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.8.3",
     "@types/node": "^24.0.15",
-    "tsup": "^8.5.0"
+    "linkedom": "^0.18.11",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3"
   }
 }
